@@ -12,6 +12,7 @@ func main() {
 	http.HandleFunc("/add", handle.AddStudent)
 	http.HandleFunc("/update", handle.UpdateStudent)
 	http.HandleFunc("/select", handle.SelectStudent)
+	http.HandleFunc("/selectone", handle.SelectOneStudent)
 
 	err := http.ListenAndServe(":9080", nil)
 	if err != nil {

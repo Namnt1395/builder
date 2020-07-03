@@ -3,6 +3,7 @@ package mysql
 import (
 	"database/sql"
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 )
@@ -24,7 +25,7 @@ type Query struct {
 
 	// SQL - Private fields used to store sql before building sql query
 	sql    string
-	sel    string
+	sel    []string
 	join   string
 	where  string
 	group  string
@@ -52,11 +53,12 @@ func New(t string, pk string) *Query {
 }
 
 // Insert inserts a record in the database
-func (q *Query) Insert(params map[string]string, tableName string) (int64, error) {
+func (q *Query) Insert(params map[string]string) (int64, error) {
 
 	// Insert and retrieve ID in one step from db
-	sql := q.formatInsertSQL(params, tableName)
+	sql := q.formatInsertSQL(params)
 
+	fmt.Println("SQL :" , sql)
 	if Debug {
 		fmt.Printf("INSERT SQL:%s %v\n", sql, valuesFromParams(params))
 	}
@@ -69,14 +71,14 @@ func (q *Query) Insert(params map[string]string, tableName string) (int64, error
 	return id, nil
 }
 
-func (q *Query) formatInsertSQL(params map[string]string, tableName string) string {
+func (q *Query) formatInsertSQL(params map[string]string) string {
 	var cols, vals []string
 
 	for i, k := range sortedParamKeys(params) {
 		cols = append(cols, database.QuoteField(k))
 		vals = append(vals, database.Placeholder(i+1))
 	}
-	query := fmt.Sprintf("INSERT INTO %s (%s) VALUES(%s)", tableName, strings.Join(cols, ","), strings.Join(vals, ","))
+	query := fmt.Sprintf("INSERT INTO %s (%s) VALUES(%s)", q.tablename, strings.Join(cols, ","), strings.Join(vals, ","))
 
 	return query
 }
@@ -141,7 +143,7 @@ func (q *Query) Count() (int64, error) {
 	}
 
 	// Reset select after getting count query
-	q.Select(s)
+	q.Select(s...)
 	q.Order(o)
 	q.reset()
 
@@ -210,19 +212,23 @@ func (q *Query) Results() ([]Result, error) {
 
 // QueryString builds a query string to use for results
 func (q *Query) QueryString() string {
-
 	if q.sql == "" {
-
-		// if we have arguments override the selector
-		if q.sel == "" {
-			// Note q.table() etc perform quoting on field names
-			q.sel = fmt.Sprintf("SELECT %s.* FROM %s", q.table(), q.table())
+		selectSlice := make([]string, len(q.sel))
+		for i, v := range q.sel {
+			selectSlice[i] = fmt.Sprintf("`%s`", trim(v))
+		}
+		selectSql := ""
+		if len(q.sel) <= 0 {
+			selectSql = fmt.Sprintf("SELECT %s.* FROM %s", q.table(), q.table())
+		} else {
+			selectSql = fmt.Sprintf("SELECT %s FROM %s", strings.Join(selectSlice, ","), q.table())
 		}
 
-		q.sql = fmt.Sprintf("%s %s %s %s %s %s %s %s", q.sel, q.join, q.where, q.group, q.having, q.order, q.offset, q.limit)
+		q.sql = fmt.Sprintf("%s %s %s %s %s %s %s %s", selectSql, q.join, q.where, q.group, q.having, q.order, q.offset, q.limit)
 		q.sql = strings.TrimRight(q.sql, " ")
 		q.sql = strings.Replace(q.sql, "  ", " ", -1)
 		q.sql = strings.Replace(q.sql, "   ", " ", -1)
+		fmt.Println(" sql :", q.sql)
 
 		// Replace ? with whatever placeholder db prefers
 		q.replaceArgPlaceholders()
@@ -248,41 +254,39 @@ func (q *Query) Offset(offset int) *Query {
 }
 
 // Where defines a WHERE clause on SQL - Additional calls add WHERE () AND () clauses
-func (q *Query) Where(sql string, args ...interface{}) *Query {
-
-	fmt.Println("len where...", len(q.where))
-	if len(q.where) > 0 {
-		q.where = fmt.Sprintf("%s AND (%s)", q.where, sql)
-	} else {
-		q.where = fmt.Sprintf("WHERE (%s)", sql)
-	}
+func (q *Query) Where(args ...interface{}) *Query {
+	var paramSlice []string
 	if args != nil {
-		if q.args == nil {
-			q.args = args
-		} else {
-			q.args = append(q.args, args...)
+		for _, param := range args {
+			paramSlice = append(paramSlice, param.(string))
 		}
 	}
-
+	if len(q.where) > 0 {
+		q.where = fmt.Sprintf("%s AND (%s)", q.where, strings.Join(paramSlice,""))
+	} else {
+		q.where = fmt.Sprintf(" WHERE (%s)", strings.Join(paramSlice,""))
+	}
 	q.reset()
 	return q
 }
+//func (q *Query) AddWhere(args ...interface{}) *Query {
+//	return Where(args ...)
+//}
+
 
 // OrWhere defines a where clause on SQL - Additional calls add WHERE () OR () clauses
-func (q *Query) OrWhere(sql string, args ...interface{}) *Query {
+func (q *Query) OrWhere(args ...interface{}) *Query {
 
-	if len(q.where) > 0 {
-		q.where = fmt.Sprintf("%s OR (%s)", q.where, sql)
-	} else {
-		q.where = fmt.Sprintf("WHERE (%s)", sql)
-	}
-
+	var paramSlice []string
 	if args != nil {
-		if q.args == nil {
-			q.args = args
-		} else {
-			q.args = append(q.args, args...)
+		for _, param := range args {
+			paramSlice = append(paramSlice, param.(string))
 		}
+	}
+	if len(q.where) > 0 {
+		q.where = fmt.Sprintf("%s OR (%s)", q.where, strings.Join(paramSlice,""))
+	} else {
+		q.where = fmt.Sprintf("WHERE (%s)", strings.Join(paramSlice,""))
 	}
 
 	q.reset()
@@ -316,12 +320,12 @@ func (q *Query) WhereIn(col string, IDs []int64) *Query {
 	return q
 }
 
-func (q *Query) Join(otherModel string, colJoinModelTable string, colJoinOrtherTable string) *Query {
+func (q *Query) Join(otherModel string, colJoinModelTable string, colJoinOtherTable string) *Query {
 	modelTable := q.tablename
 
 	joinTable := fmt.Sprintf("%s", otherModel)
 
-	sql := fmt.Sprintf("INNER JOIN %s ON %s."+colJoinModelTable+" = %s."+colJoinOrtherTable , database.QuoteField(joinTable), database.QuoteField(modelTable), database.QuoteField(joinTable))
+	sql := fmt.Sprintf("INNER JOIN %s ON %s."+colJoinModelTable+" = %s."+colJoinOtherTable, database.QuoteField(joinTable), database.QuoteField(modelTable), database.QuoteField(joinTable))
 
 	if len(q.join) > 0 {
 		q.join = fmt.Sprintf("%s %s", q.join, sql)
@@ -333,7 +337,6 @@ func (q *Query) Join(otherModel string, colJoinModelTable string, colJoinOrtherT
 	q.reset()
 	return q
 }
-
 
 // Order defines ORDER BY sql
 func (q *Query) Order(sql string) *Query {
@@ -370,8 +373,8 @@ func (q *Query) Having(sql string) *Query {
 }
 
 // Select defines SELECT  sql
-func (q *Query) Select(sql string) *Query {
-	q.sel = sql
+func (q *Query) Select(field ...string) *Query {
+	q.sel = field
 	q.reset()
 	return q
 }
@@ -465,4 +468,11 @@ func scanRow(cols []string, rows *sql.Rows) (Result, error) {
 
 	}
 	return result, nil
+}
+func trim(str string) string {
+	re := regexp.MustCompile(`[\s]+`)
+	// replace multi space = 1 space
+	str = re.ReplaceAllString(str, " ")
+
+	return strings.TrimSpace(str)
 }
