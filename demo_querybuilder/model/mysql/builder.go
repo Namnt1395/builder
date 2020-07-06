@@ -3,8 +3,10 @@ package mysql
 import (
 	"database/sql"
 	"fmt"
+	"reflect"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -26,6 +28,7 @@ type Query struct {
 	// SQL - Private fields used to store sql before building sql query
 	sql    string
 	sel    []string
+	update   string
 	join   string
 	where  string
 	group  string
@@ -36,6 +39,43 @@ type Query struct {
 
 	// Extra args to be substituted in the *where* clause
 	args []interface{}
+}
+
+func SetData(data map[string]interface{}, object interface{}) map[string]interface{} {
+
+	result := make(map[string]interface{})
+
+	st := reflect.TypeOf(*&object)
+
+	num := st.NumField()
+
+	// for 1
+	for i := 0; i < num; i++ {
+		item := st.Field(i)
+
+		// for in data
+		for v, _ := range data {
+			fmt.Println("item.........", data)
+			// check theo tag
+			if item.Tag.Get("json") == v {
+				// switch
+				switch item.Type.Kind() {
+				case reflect.Int:
+					format := fmt.Sprintf("%d", data[v])
+					fmt.Println("format....", format)
+					result[item.Name], _ = strconv.Atoi(format)
+				case reflect.String:
+					result[item.Name] = fmt.Sprintf("%v", data[v])
+				default:
+				} // end switch
+
+			} // end if check name
+
+		} // end for data
+
+	} // end for 1
+	fmt.Println("data v :", result)
+	return result
 }
 
 // New builds a new Query, given the table and primary key
@@ -53,12 +93,11 @@ func New(t string, pk string) *Query {
 }
 
 // Insert inserts a record in the database
-func (q *Query) Insert(params map[string]string) (int64, error) {
+func (q *Query) Insert(params map[string]interface{}) (int64, error) {
 
 	// Insert and retrieve ID in one step from db
 	sql := q.formatInsertSQL(params)
 
-	fmt.Println("SQL :" , sql)
 	if Debug {
 		fmt.Printf("INSERT SQL:%s %v\n", sql, valuesFromParams(params))
 	}
@@ -71,7 +110,44 @@ func (q *Query) Insert(params map[string]string) (int64, error) {
 	return id, nil
 }
 
-func (q *Query) formatInsertSQL(params map[string]string) string {
+// Insert a object in the database
+func (q *Query) SaveObject(object interface{}) (int64, error) {
+	var params = make(map[string]interface{})
+	////--- Extract Value without specifying Type
+	val := reflect.Indirect(reflect.ValueOf(object))
+	for i := 0; i < val.Type().NumField(); i++ {
+		fmt.Println("value field :" , val.Field(i))
+		// create map param
+		if val.Field(i).IsValid(){
+			// switch
+			switch val.Field(i).Type().Kind() {
+			case reflect.Int:
+				params[val.Type().Field(i).Tag.Get("json")] = val.Field(i).Int()
+				//result[item.Name] = val
+			case reflect.String:
+				params[val.Type().Field(i).Tag.Get("json")] = val.Field(i).String()
+			default:
+			} // end switch
+
+		}
+	}
+	// Insert and retrieve ID in one step from db
+	sql := q.formatInsertSQL(params)
+
+	if Debug {
+		fmt.Printf("INSERT SQL:%s %v\n", sql, valuesFromParams(params))
+	}
+
+	id, err := database.Insert(sql, valuesFromParams(params)...)
+	if err != nil {
+		return 0, err
+	}
+
+	return id, nil
+}
+
+
+func (q *Query) formatInsertSQL(params map[string]interface{}) string {
 	var cols, vals []string
 
 	for i, k := range sortedParamKeys(params) {
@@ -84,21 +160,39 @@ func (q *Query) formatInsertSQL(params map[string]string) string {
 }
 
 // Update one model specified in this query - the column names MUST be verified in the model
-func (q *Query) Update(params map[string]string) error {
+func (q *Query) Update(params map[string]interface{}) error {
+
+	return q.UpdateAll(params)
+}
+func (q *Query) UpdateObject(object interface{}) error {
+	var params = make(map[string]interface{})
+	val := reflect.Indirect(reflect.ValueOf(object))
+	for i := 0; i < val.Type().NumField(); i++ {
+		// create map param
+		if val.Field(i).IsValid(){
+			// switch
+			switch val.Field(i).Type().Kind() {
+			case reflect.Int:
+				params[val.Type().Field(i).Tag.Get("json")] = val.Field(i).Int()
+			case reflect.String:
+				params[val.Type().Field(i).Tag.Get("json")] = val.Field(i).String()
+			default:
+			} // end switch
+		}
+	}
 	return q.UpdateAll(params)
 }
 
 // UpdateAll updates all models specified in this relation
-func (q *Query) UpdateAll(params map[string]string) error {
+func (q *Query) UpdateAll(params map[string]interface{}) error {
 	// Create sql for update from ALL params
-	q.Select(fmt.Sprintf("UPDATE %s SET %s", q.table(), querySQL(params)))
+	q.UpdateSql(fmt.Sprintf("UPDATE %s SET %s", q.table(), querySQL(params)))
 
 	q.args = append(valuesFromParams(params), q.args...)
 
 	if Debug {
 		fmt.Printf("UPDATE SQL:%s\n%v\n", q.QueryString(), valuesFromParams(params))
 	}
-
 	test, err := q.Result()
 	fmt.Println("test sql...", test)
 	return err
@@ -153,6 +247,7 @@ func (q *Query) Count() (int64, error) {
 // Result executes the query against the database, returning sql.Result, and error (no rows)
 // (Executes SQL)
 func (q *Query) Result() (sql.Result, error) {
+	fmt.Println("query result....", q.QueryString())
 	results, err := database.Exec(q.QueryString(), q.args...)
 	return results, err
 }
@@ -223,6 +318,11 @@ func (q *Query) QueryString() string {
 		} else {
 			selectSql = fmt.Sprintf("SELECT %s FROM %s", strings.Join(selectSlice, ","), q.table())
 		}
+		fmt.Println("q.update len :", len(q.update))
+		if len(q.update) > 0{
+			selectSql = q.update
+		}
+		fmt.Println("select sql..", selectSql)
 
 		q.sql = fmt.Sprintf("%s %s %s %s %s %s %s %s", selectSql, q.join, q.where, q.group, q.having, q.order, q.offset, q.limit)
 		q.sql = strings.TrimRight(q.sql, " ")
@@ -262,17 +362,13 @@ func (q *Query) Where(args ...interface{}) *Query {
 		}
 	}
 	if len(q.where) > 0 {
-		q.where = fmt.Sprintf("%s AND (%s)", q.where, strings.Join(paramSlice,""))
+		q.where = fmt.Sprintf("%s AND (%s)", q.where, strings.Join(paramSlice, ""))
 	} else {
-		q.where = fmt.Sprintf(" WHERE (%s)", strings.Join(paramSlice,""))
+		q.where = fmt.Sprintf(" WHERE (%s)", strings.Join(paramSlice, ""))
 	}
 	q.reset()
 	return q
 }
-//func (q *Query) AddWhere(args ...interface{}) *Query {
-//	return Where(args ...)
-//}
-
 
 // OrWhere defines a where clause on SQL - Additional calls add WHERE () OR () clauses
 func (q *Query) OrWhere(args ...interface{}) *Query {
@@ -284,9 +380,9 @@ func (q *Query) OrWhere(args ...interface{}) *Query {
 		}
 	}
 	if len(q.where) > 0 {
-		q.where = fmt.Sprintf("%s OR (%s)", q.where, strings.Join(paramSlice,""))
+		q.where = fmt.Sprintf("%s OR (%s)", q.where, strings.Join(paramSlice, ""))
 	} else {
-		q.where = fmt.Sprintf("WHERE (%s)", strings.Join(paramSlice,""))
+		q.where = fmt.Sprintf("WHERE (%s)", strings.Join(paramSlice, ""))
 	}
 
 	q.reset()
@@ -378,6 +474,12 @@ func (q *Query) Select(field ...string) *Query {
 	q.reset()
 	return q
 }
+// Select defines Update  sql
+func (q *Query) UpdateSql(field string) *Query {
+	q.update = field
+	q.reset()
+	return q
+}
 
 // Clear sql/query caches
 func (q *Query) reset() {
@@ -405,7 +507,7 @@ func (q *Query) replaceArgPlaceholders() {
 
 // Sorts the param names given - map iteration order is explicitly random in Go
 // but we need params in a defined order to avoid unexpected results.
-func sortedParamKeys(params map[string]string) []string {
+func sortedParamKeys(params map[string]interface{}) []string {
 	sortedKeys := make([]string, len(params))
 	i := 0
 	for k := range params {
@@ -418,7 +520,7 @@ func sortedParamKeys(params map[string]string) []string {
 }
 
 // Generate a set of values for the params in order
-func valuesFromParams(params map[string]string) []interface{} {
+func valuesFromParams(params map[string]interface{}) []interface{} {
 	var values []interface{}
 	for _, key := range sortedParamKeys(params) {
 		values = append(values, params[key])
@@ -427,7 +529,7 @@ func valuesFromParams(params map[string]string) []interface{} {
 }
 
 // Used for update statements, turn params into sql i.e. "col"=?
-func querySQL(params map[string]string) string {
+func querySQL(params map[string]interface{}) string {
 	var output []string
 	for _, k := range sortedParamKeys(params) {
 		output = append(output, fmt.Sprintf("%s=?", database.QuoteField(k)))

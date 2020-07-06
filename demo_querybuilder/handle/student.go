@@ -1,6 +1,7 @@
 package handle
 
 import (
+	"demo_querybuilder/model/entity"
 	"demo_querybuilder/model/mysql"
 	"fmt"
 	"net/http"
@@ -20,7 +21,7 @@ func AddStudent(w http.ResponseWriter, r *http.Request) {
 	name := queries.Get("name")
 	classId := queries.Get("class_id")
 
-	params := map[string]string{
+	params := map[string]interface{}{
 		"code":     code,
 		"name":     name,
 		"class_id": classId,
@@ -33,6 +34,11 @@ func AddStudent(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("Isert thanh cong")
 	}
 }
+func InsertObject(w http.ResponseWriter, r *http.Request) {
+	//p := entity.Student{Code: "1256", Name: "Namnt455", ClassID: 2}
+	//mysql.SaveObject(p)
+	//fmt.Println(err.Error())
+}
 
 func SelectOneStudent(w http.ResponseWriter, r *http.Request) {
 	result, err := mysql.SelectStudentId(1)
@@ -43,9 +49,9 @@ func SelectOneStudent(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("HO ten :" + result.Name)
 }
 func SelectStudent(w http.ResponseWriter, r *http.Request) {
-	//mysql.SelectStudent()
+	mysql.SelectStudent()
 	//mysql.SelectStudentWhereIn()
-	mysql.SelectStudentWhereJoin()
+	//mysql.SelectStudentWhereJoin()
 }
 func UpdateStudent(w http.ResponseWriter, r *http.Request) {
 	queries := r.URL.Query()
@@ -55,4 +61,15 @@ func UpdateStudent(w http.ResponseWriter, r *http.Request) {
 	classId, _ := strconv.Atoi(queries.Get("class_id"))
 	model := mysql.StudentModel{ID: int64(idUpdate), ClassID: classId, Code: code, Name: name}
 	mysql.UpdateStudent(model)
+}
+func UpdateObjectStudent(w http.ResponseWriter, r *http.Request) {
+	rs, _ := mysql.FindStudent()
+	rs = &entity.Student{
+		ID: rs.ID,
+		Code:    rs.Code,
+		Name:    "Tuấn 123",
+		ClassID: rs.ClassID,
+	}
+
+	mysql.UpdateObject(*rs)
 }
