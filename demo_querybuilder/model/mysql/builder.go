@@ -22,8 +22,8 @@ type Result map[string]interface{}
 type Query struct {
 
 	// Database - database name and primary key, set with New()
-	tablename  string
-	primarykey string
+	tableName  string
+	primaryKey string
 
 	// SQL - Private fields used to store sql before building sql query
 	sql    string
@@ -40,44 +40,6 @@ type Query struct {
 	// Extra args to be substituted in the *where* clause
 	args []interface{}
 }
-
-func SetData(data map[string]interface{}, object interface{}) map[string]interface{} {
-
-	result := make(map[string]interface{})
-
-	st := reflect.TypeOf(*&object)
-
-	num := st.NumField()
-
-	// for 1
-	for i := 0; i < num; i++ {
-		item := st.Field(i)
-
-		// for in data
-		for v, _ := range data {
-			fmt.Println("item.........", data)
-			// check theo tag
-			if item.Tag.Get("json") == v {
-				// switch
-				switch item.Type.Kind() {
-				case reflect.Int:
-					format := fmt.Sprintf("%d", data[v])
-					fmt.Println("format....", format)
-					result[item.Name], _ = strconv.Atoi(format)
-				case reflect.String:
-					result[item.Name] = fmt.Sprintf("%v", data[v])
-				default:
-				} // end switch
-
-			} // end if check name
-
-		} // end for data
-
-	} // end for 1
-	fmt.Println("data v :", result)
-	return result
-}
-
 // New builds a new Query, given the table and primary key
 func New(t string, pk string) *Query {
 	// If we have no db, return nil
@@ -85,28 +47,50 @@ func New(t string, pk string) *Query {
 		return nil
 	}
 	q := &Query{
-		tablename:  t,
-		primarykey: pk,
+		tableName:  t,
+		primaryKey: pk,
 	}
 
 	return q
 }
+func SetData(data map[string]interface{}, object interface{}) map[string]interface{} {
+	result := make(map[string]interface{})
+	st := reflect.TypeOf(*&object)
+	num := st.NumField()
+	// for 1
+	for i := 0; i < num; i++ {
+		item := st.Field(i)
+		// for in data
+		for v, _ := range data {
+			// check theo tag
+			if item.Tag.Get("json") == v {
+				// switch
+				switch item.Type.Kind() {
+				case reflect.Int:
+					format := fmt.Sprintf("%d", data[v])
+					result[item.Name], _ = strconv.Atoi(format)
+				case reflect.String:
+					result[item.Name] = fmt.Sprintf("%v", data[v])
+				default:
+				}
+			}
+		}
+	}
+	return result
+}
 
 // Insert inserts a record in the database
-func (q *Query) Insert(params map[string]interface{}) (int64, error) {
-
+func (q *Query) Save(params map[string]interface{}) (int64, error) {
 	// Insert and retrieve ID in one step from db
 	sql := q.formatInsertSQL(params)
-
 	if Debug {
 		fmt.Printf("INSERT SQL:%s %v\n", sql, valuesFromParams(params))
 	}
-
+	fmt.Println(" sql save...", sql)
 	id, err := database.Insert(sql, valuesFromParams(params)...)
 	if err != nil {
 		return 0, err
 	}
-
 	return id, nil
 }
 
@@ -116,18 +100,16 @@ func (q *Query) SaveObject(object interface{}) (int64, error) {
 	////--- Extract Value without specifying Type
 	val := reflect.Indirect(reflect.ValueOf(object))
 	for i := 0; i < val.Type().NumField(); i++ {
-		fmt.Println("value field :" , val.Field(i))
 		// create map param
 		if val.Field(i).IsValid(){
 			// switch
 			switch val.Field(i).Type().Kind() {
 			case reflect.Int:
 				params[val.Type().Field(i).Tag.Get("json")] = val.Field(i).Int()
-				//result[item.Name] = val
 			case reflect.String:
 				params[val.Type().Field(i).Tag.Get("json")] = val.Field(i).String()
 			default:
-			} // end switch
+			}
 
 		}
 	}
@@ -137,7 +119,7 @@ func (q *Query) SaveObject(object interface{}) (int64, error) {
 	if Debug {
 		fmt.Printf("INSERT SQL:%s %v\n", sql, valuesFromParams(params))
 	}
-
+	fmt.Println(" sql save object...", sql)
 	id, err := database.Insert(sql, valuesFromParams(params)...)
 	if err != nil {
 		return 0, err
@@ -149,19 +131,16 @@ func (q *Query) SaveObject(object interface{}) (int64, error) {
 
 func (q *Query) formatInsertSQL(params map[string]interface{}) string {
 	var cols, vals []string
-
 	for i, k := range sortedParamKeys(params) {
 		cols = append(cols, database.QuoteField(k))
 		vals = append(vals, database.Placeholder(i+1))
 	}
-	query := fmt.Sprintf("INSERT INTO %s (%s) VALUES(%s)", q.tablename, strings.Join(cols, ","), strings.Join(vals, ","))
-
+	query := fmt.Sprintf("INSERT INTO %s (%s) VALUES(%s)", q.tableName, strings.Join(cols, ","), strings.Join(vals, ","))
 	return query
 }
 
 // Update one model specified in this query - the column names MUST be verified in the model
 func (q *Query) Update(params map[string]interface{}) error {
-
 	return q.UpdateAll(params)
 }
 func (q *Query) UpdateObject(object interface{}) error {
@@ -187,29 +166,22 @@ func (q *Query) UpdateObject(object interface{}) error {
 func (q *Query) UpdateAll(params map[string]interface{}) error {
 	// Create sql for update from ALL params
 	q.UpdateSql(fmt.Sprintf("UPDATE %s SET %s", q.table(), querySQL(params)))
-
 	q.args = append(valuesFromParams(params), q.args...)
-
 	if Debug {
 		fmt.Printf("UPDATE SQL:%s\n%v\n", q.QueryString(), valuesFromParams(params))
 	}
-	test, err := q.Result()
-	fmt.Println("test sql...", test)
+	_, err := q.Result()
 	return err
 }
 
 // DeleteAll delets *all* models specified in this relation
 func (q *Query) DeleteAll() error {
-
 	q.Select(fmt.Sprintf("DELETE FROM %s", q.table()))
-
 	if Debug {
 		fmt.Printf("DELETE SQL:%s <= %v\n", q.QueryString(), q.args)
 	}
-
 	// Execute
 	_, err := q.Result()
-
 	return err
 }
 
@@ -221,7 +193,6 @@ func (q *Query) Count() (int64, error) {
 	q.Select(countSelect)
 	o := strings.Replace(q.order, "ORDER BY ", "", 1)
 	q.order = ""
-
 	// Fetch count from db for our sql with count select and no order set
 	var count int64
 	rows, err := q.Rows()
@@ -247,7 +218,6 @@ func (q *Query) Count() (int64, error) {
 // Result executes the query against the database, returning sql.Result, and error (no rows)
 // (Executes SQL)
 func (q *Query) Result() (sql.Result, error) {
-	fmt.Println("query result....", q.QueryString())
 	results, err := database.Exec(q.QueryString(), q.args...)
 	return results, err
 }
@@ -260,36 +230,29 @@ func (q *Query) Rows() (*sql.Rows, error) {
 
 // FirstResult executes the SQL and returrns the first result
 func (q *Query) FirstResult() (Result, error) {
-
 	// Set a limit on the query
 	q.Limit(1)
-
 	// Fetch all results (1)
 	results, err := q.Results()
 	if err != nil {
 		return nil, err
 	}
-
 	if len(results) == 0 {
 		return nil, fmt.Errorf("No results found for Query:%s", q.QueryString())
 	}
-
 	// Return the first result
 	return results[0], nil
 }
 
 // Results returns an array of results
 func (q *Query) Results() ([]Result, error) {
-
 	// Make an empty result set map
 	var results []Result
 	rows, err := q.Rows()
-
 	if err != nil {
 		return results, fmt.Errorf("Error querying database for rows: %s\nQUERY:%s", err, q)
 	}
 	defer rows.Close()
-
 	cols, err := rows.Columns()
 	if err != nil {
 		return results, fmt.Errorf("Error fetching columns: %s\nQUERY:%s\nCOLS:%s", err, q, cols)
@@ -301,7 +264,6 @@ func (q *Query) Results() ([]Result, error) {
 		}
 		results = append(results, result)
 	}
-
 	return results, nil
 }
 
@@ -318,22 +280,18 @@ func (q *Query) QueryString() string {
 		} else {
 			selectSql = fmt.Sprintf("SELECT %s FROM %s", strings.Join(selectSlice, ","), q.table())
 		}
-		fmt.Println("q.update len :", len(q.update))
 		if len(q.update) > 0{
 			selectSql = q.update
 		}
-		fmt.Println("select sql..", selectSql)
-
 		q.sql = fmt.Sprintf("%s %s %s %s %s %s %s %s", selectSql, q.join, q.where, q.group, q.having, q.order, q.offset, q.limit)
 		q.sql = strings.TrimRight(q.sql, " ")
 		q.sql = strings.Replace(q.sql, "  ", " ", -1)
 		q.sql = strings.Replace(q.sql, "   ", " ", -1)
-		fmt.Println(" sql :", q.sql)
-
 		// Replace ? with whatever placeholder db prefers
 		q.replaceArgPlaceholders()
 
 		q.sql = q.sql + ";"
+		fmt.Println("sql result :",  q.sql)
 	}
 
 	return q.sql
@@ -417,10 +375,8 @@ func (q *Query) WhereIn(col string, IDs []int64) *Query {
 }
 
 func (q *Query) Join(otherModel string, colJoinModelTable string, colJoinOtherTable string) *Query {
-	modelTable := q.tablename
-
+	modelTable := q.tableName
 	joinTable := fmt.Sprintf("%s", otherModel)
-
 	sql := fmt.Sprintf("INNER JOIN %s ON %s."+colJoinModelTable+" = %s."+colJoinOtherTable, database.QuoteField(joinTable), database.QuoteField(modelTable), database.QuoteField(joinTable))
 
 	if len(q.join) > 0 {
@@ -428,8 +384,6 @@ func (q *Query) Join(otherModel string, colJoinModelTable string, colJoinOtherTa
 	} else {
 		q.join = fmt.Sprintf("%s", sql)
 	}
-
-	fmt.Println("q join.....", q.join)
 	q.reset()
 	return q
 }
@@ -489,12 +443,12 @@ func (q *Query) reset() {
 
 // Ask model for primary key name to use
 func (q *Query) pk() string {
-	return database.QuoteField(q.primarykey)
+	return database.QuoteField(q.primaryKey)
 }
 
 // Ask model for table name to use
 func (q *Query) table() string {
-	return database.QuoteField(q.tablename)
+	return database.QuoteField(q.tableName)
 }
 
 // Replace ?
@@ -506,7 +460,7 @@ func (q *Query) replaceArgPlaceholders() {
 }
 
 // Sorts the param names given - map iteration order is explicitly random in Go
-// but we need params in a defined order to avoid unexpected results.
+// Need params in a defined order to avoid unexpected results.
 func sortedParamKeys(params map[string]interface{}) []string {
 	sortedKeys := make([]string, len(params))
 	i := 0
