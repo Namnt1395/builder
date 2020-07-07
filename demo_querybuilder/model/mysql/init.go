@@ -1,9 +1,10 @@
 package mysql
 
 import (
-	"demo_querybuilder/model/adapters"
+	"builder/demo_querybuilder/model/adapters"
 	"fmt"
 )
+
 var database *adapters.MysqlAdapter
 
 // OpenDatabase opens the database with the given options

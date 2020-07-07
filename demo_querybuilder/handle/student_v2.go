@@ -1,8 +1,8 @@
 package handle
 
 import (
-	"demo_querybuilder/entity"
-	"demo_querybuilder/model/mysql"
+	"builder/demo_querybuilder/entity"
+	"builder/demo_querybuilder/model/mysql"
 	"fmt"
 	"github.com/mitchellh/mapstructure"
 	"net/http"
@@ -66,7 +66,7 @@ func SelectStudentV2(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("co loi xay ra")
 	}
 	for _, r := range results {
-		m := mysql.SetData(r,entity.StudentEntity{})
+		m := mysql.SetData(r, entity.StudentEntity{})
 		var student *entity.StudentEntity
 		err2 := mapstructure.Decode(m, &student)
 		if err2 == nil {
@@ -105,7 +105,7 @@ func UpdateObjectStudentV2(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("Co loi xay ra", err2.Error())
 	}
 	rs := &entity.StudentEntity{
-		ID: student.ID,
+		ID:      student.ID,
 		Code:    student.Code,
 		Name:    "Tuấn 123",
 		ClassID: student.ClassID,

@@ -1,10 +1,9 @@
 package handle
 
 import (
-	"demo_querybuilder/model/mysql"
+	"builder/demo_querybuilder/model/mysql"
 	"fmt"
 	"net/http"
-
 )
 
 func AddStudent(w http.ResponseWriter, r *http.Request) {
@@ -63,7 +62,7 @@ func UpdateStudent(w http.ResponseWriter, r *http.Request) {
 func UpdateObjectStudent(w http.ResponseWriter, r *http.Request) {
 	rs, _ := mysql.FindStudent()
 	rs = &mysql.StudentModel{
-		ID: rs.ID,
+		ID:      rs.ID,
 		Code:    rs.Code,
 		Name:    "Tuấn 123",
 		ClassID: rs.ClassID,

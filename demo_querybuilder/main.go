@@ -1,8 +1,8 @@
 package main
 
 import (
-	"demo_querybuilder/handle"
-	"demo_querybuilder/model/mysql"
+	"builder/demo_querybuilder/handle"
+	"builder/demo_querybuilder/model/mysql"
 	"fmt"
 	"net/http"
 )
@@ -31,9 +31,6 @@ func main() {
 
 	//handle.SetDataNew(params, handle.Attributes{})
 	//fmt.Println("email....", result["Email"])
-
-
-
 
 	_ = mysql.OpenDatabase()
 
