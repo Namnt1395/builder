@@ -1,30 +1,40 @@
 package mysql
 
 import (
-	"builder/demo_querybuilder/model/adapters"
+	"database/sql"
 	"fmt"
+	_ "github.com/go-sql-driver/mysql"
 )
 
-var database *adapters.MysqlAdapter
+const (
+	MysqlDriver   = "mysql"
+	MysqlUser     = "namnt"
+	MysqlPassWord = "123456"
+	MysqlDbName   = "bg_student"
+	MysqlHost     = "localhost" //imp.bidgear.com
+	MysqlPort     = 3306
+)
 
-// OpenDatabase opens the database with the given options
-func OpenDatabase() error {
-	if database != nil {
-		return fmt.Errorf("query: database already open - %s", database)
-	}
-	database = &adapters.MysqlAdapter{}
-	if database == nil {
-		return fmt.Errorf("query: database adapter not recognised")
-	}
-	return database.Open()
+var dsn = fmt.Sprintf("%s:%s@tcp(%s:%d)/%s", MysqlUser, MysqlPassWord, MysqlHost, MysqlPort, MysqlDbName)
+var MySQL *sql.DB
+
+func Connect() error {
+	fmt.Println("dsn...", dsn)
+	var err error
+	MySQL, err = sql.Open(MysqlDriver, dsn)
+
+	return err
 }
 
-// CloseDatabase closes the database opened by OpenDatabase
-func CloseDatabase() error {
-	var err error
-	if database != nil {
-		err = database.Close()
-		database = nil
+func ContinueConnectMySQL() {
+	err := MySQL.Ping()
+	if err != nil {
+		fmt.Println(err.Error())
+		MySQL, _ = sql.Open(MysqlDriver, dsn)
 	}
+}
+
+func Close() error {
+	err := MySQL.Close()
 	return err
 }

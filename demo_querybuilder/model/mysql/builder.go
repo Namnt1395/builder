@@ -45,7 +45,7 @@ type Query struct {
 // New builds a new Query, given the table and primary key
 func New(t string, pk string) *Query {
 	// If we have no db, return nil
-	if database == nil {
+	if MySQL == nil {
 		return nil
 	}
 	q := &Query{
@@ -90,7 +90,7 @@ func (q *Query) Insert(params map[string]interface{}) (int64, error) {
 		fmt.Printf("INSERT SQL:%s %v\n", sql, valuesFromParams(params))
 	}
 	fmt.Println(" sql save...", sql)
-	id, err := database.Insert(sql, valuesFromParams(params)...)
+	id, err := Insert(sql, valuesFromParams(params)...)
 	if err != nil {
 		return 0, err
 	}
@@ -123,7 +123,7 @@ func (q *Query) InsertObject(object interface{}) (int64, error) {
 		fmt.Printf("INSERT SQL:%s %v\n", sql, valuesFromParams(params))
 	}
 	fmt.Println(" sql save object...", sql)
-	id, err := database.Insert(sql, valuesFromParams(params)...)
+	id, err := Insert(sql, valuesFromParams(params)...)
 	if err != nil {
 		return 0, err
 	}
@@ -134,8 +134,8 @@ func (q *Query) InsertObject(object interface{}) (int64, error) {
 func (q *Query) formatInsertSQL(params map[string]interface{}) string {
 	var cols, vals []string
 	for i, k := range sortedParamKeys(params) {
-		cols = append(cols, database.QuoteField(k))
-		vals = append(vals, database.Placeholder(i+1))
+		cols = append(cols, QuoteField(k))
+		vals = append(vals, Placeholder(i+1))
 	}
 	query := fmt.Sprintf("INSERT INTO %s (%s) VALUES(%s)", q.tableName, strings.Join(cols, ","), strings.Join(vals, ","))
 	return query
@@ -221,13 +221,13 @@ func (q *Query) Count() (int64, error) {
 // Result executes the query against the database, returning sql.Result, and error (no rows)
 // (Executes SQL)
 func (q *Query) Result() (sql.Result, error) {
-	results, err := database.Exec(q.QueryString(), q.args...)
+	results, err := Exec(q.QueryString(), q.args...)
 	return results, err
 }
 
 // Rows executes the query against the database, and return the sql rows result for this query
 func (q *Query) Rows() (*sql.Rows, error) {
-	results, err := database.Query(q.QueryString(), q.args...)
+	results, err := QuerySql(q.QueryString(), q.args...)
 	return results, err
 }
 
@@ -386,7 +386,7 @@ func (q *Query) WhereIn(col string, IDs []int64) *Query {
 func (q *Query) Join(otherModel string, colJoinModelTable string, colJoinOtherTable string) *Query {
 	modelTable := q.tableName
 	joinTable := fmt.Sprintf("%s", otherModel)
-	sql := fmt.Sprintf("INNER JOIN %s ON %s."+colJoinModelTable+" = %s."+colJoinOtherTable, database.QuoteField(joinTable), database.QuoteField(modelTable), database.QuoteField(joinTable))
+	sql := fmt.Sprintf("INNER JOIN %s ON %s."+colJoinModelTable+" = %s."+colJoinOtherTable, QuoteField(joinTable), QuoteField(modelTable), QuoteField(joinTable))
 
 	if len(q.join) > 0 {
 		q.join = fmt.Sprintf("%s %s", q.join, sql)
@@ -453,19 +453,19 @@ func (q *Query) reset() {
 
 // Ask model for primary key name to use
 func (q *Query) pk() string {
-	return database.QuoteField(q.primaryKey)
+	return QuoteField(q.primaryKey)
 }
 
 // Ask model for table name to use
 func (q *Query) table() string {
-	return database.QuoteField(q.tableName)
+	return QuoteField(q.tableName)
 }
 
 // Replace ?
 func (q *Query) replaceArgPlaceholders() {
 	// Match ? and replace with argument placeholder from database
 	for i := range q.args {
-		q.sql = strings.Replace(q.sql, "?", database.Placeholder(i+1), 1)
+		q.sql = strings.Replace(q.sql, "?", Placeholder(i+1), 1)
 	}
 }
 
@@ -496,7 +496,7 @@ func valuesFromParams(params map[string]interface{}) []interface{} {
 func querySQL(params map[string]interface{}) string {
 	var output []string
 	for _, k := range sortedParamKeys(params) {
-		output = append(output, fmt.Sprintf("%s=?", database.QuoteField(k)))
+		output = append(output, fmt.Sprintf("%s=?", QuoteField(k)))
 	}
 	return strings.Join(output, ",")
 }

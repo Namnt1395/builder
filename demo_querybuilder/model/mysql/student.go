@@ -16,6 +16,7 @@ func StudentQuery() *Query {
 }
 
 func StudentById(id string) (*StudentModel, error) {
+
 	resultQuery, err := StudentQuery().Where("id", "=", id).FirstResult()
 	if err != nil {
 		return nil, err
@@ -38,6 +39,7 @@ func ListStudent() ([]*StudentModel, error) {
 		models = append(models, &student)
 	}
 
+	fmt.Println("modelssss", models)
 	return models, nil
 }
 

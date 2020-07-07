@@ -9,7 +9,7 @@ import (
 
 func main() {
 
-	_ = mysql.OpenDatabase()
+	mysql.Connect()
 
 	http.HandleFunc("/create_student", handle.CreateStudent)
 	http.HandleFunc("/student", handle.StudentById)
