@@ -3,6 +3,7 @@ package mysql
 import (
 	"database/sql"
 	"fmt"
+	"github.com/mitchellh/mapstructure"
 	"reflect"
 	"regexp"
 	"sort"
@@ -28,7 +29,7 @@ type Query struct {
 	// SQL - Private fields used to store sql before building sql query
 	sql    string
 	sel    []string
-	update   string
+	update string
 	join   string
 	where  string
 	group  string
@@ -40,6 +41,7 @@ type Query struct {
 	// Extra args to be substituted in the *where* clause
 	args []interface{}
 }
+
 // New builds a new Query, given the table and primary key
 func New(t string, pk string) *Query {
 	// If we have no db, return nil
@@ -53,9 +55,9 @@ func New(t string, pk string) *Query {
 
 	return q
 }
-func SetData(data map[string]interface{}, object interface{}) map[string]interface{} {
+func (q *Query) SetData(data map[string]interface{}, object interface{}) interface{} {
 	result := make(map[string]interface{})
-	st := reflect.TypeOf(*&object)
+	st := reflect.TypeOf(object)
 	num := st.NumField()
 	// for 1
 	for i := 0; i < num; i++ {
@@ -76,11 +78,12 @@ func SetData(data map[string]interface{}, object interface{}) map[string]interfa
 			}
 		}
 	}
-	return result
+	mapstructure.Decode(result, &object)
+	return object
 }
 
 // Insert inserts a record in the database
-func (q *Query) Save(params map[string]interface{}) (int64, error) {
+func (q *Query) Insert(params map[string]interface{}) (int64, error) {
 	// Insert and retrieve ID in one step from db
 	sql := q.formatInsertSQL(params)
 	if Debug {
@@ -95,13 +98,13 @@ func (q *Query) Save(params map[string]interface{}) (int64, error) {
 }
 
 // Insert a object in the database
-func (q *Query) SaveObject(object interface{}) (int64, error) {
+func (q *Query) InsertObject(object interface{}) (int64, error) {
 	var params = make(map[string]interface{})
 	////--- Extract Value without specifying Type
 	val := reflect.Indirect(reflect.ValueOf(object))
 	for i := 0; i < val.Type().NumField(); i++ {
 		// create map param
-		if val.Field(i).IsValid(){
+		if val.Field(i).IsValid() {
 			// switch
 			switch val.Field(i).Type().Kind() {
 			case reflect.Int:
@@ -128,7 +131,6 @@ func (q *Query) SaveObject(object interface{}) (int64, error) {
 	return id, nil
 }
 
-
 func (q *Query) formatInsertSQL(params map[string]interface{}) string {
 	var cols, vals []string
 	for i, k := range sortedParamKeys(params) {
@@ -140,15 +142,15 @@ func (q *Query) formatInsertSQL(params map[string]interface{}) string {
 }
 
 // Update one model specified in this query - the column names MUST be verified in the model
-func (q *Query) Update(params map[string]interface{}) error {
+func (q *Query) Update(params map[string]interface{}) (int64, error) {
 	return q.UpdateAll(params)
 }
-func (q *Query) UpdateObject(object interface{}) error {
+func (q *Query) UpdateObject(object interface{}) (int64, error) {
 	var params = make(map[string]interface{})
 	val := reflect.Indirect(reflect.ValueOf(object))
 	for i := 0; i < val.Type().NumField(); i++ {
 		// create map param
-		if val.Field(i).IsValid(){
+		if val.Field(i).IsValid() {
 			// switch
 			switch val.Field(i).Type().Kind() {
 			case reflect.Int:
@@ -163,15 +165,16 @@ func (q *Query) UpdateObject(object interface{}) error {
 }
 
 // UpdateAll updates all models specified in this relation
-func (q *Query) UpdateAll(params map[string]interface{}) error {
+func (q *Query) UpdateAll(params map[string]interface{}) (int64, error) {
 	// Create sql for update from ALL params
 	q.UpdateSql(fmt.Sprintf("UPDATE %s SET %s", q.table(), querySQL(params)))
 	q.args = append(valuesFromParams(params), q.args...)
 	if Debug {
 		fmt.Printf("UPDATE SQL:%s\n%v\n", q.QueryString(), valuesFromParams(params))
 	}
-	_, err := q.Result()
-	return err
+	rs, err := q.Result()
+	id, err := rs.RowsAffected()
+	return id, err
 }
 
 // DeleteAll delets *all* models specified in this relation
@@ -280,7 +283,7 @@ func (q *Query) QueryString() string {
 		} else {
 			selectSql = fmt.Sprintf("SELECT %s FROM %s", strings.Join(selectSlice, ","), q.table())
 		}
-		if len(q.update) > 0{
+		if len(q.update) > 0 {
 			selectSql = q.update
 		}
 		q.sql = fmt.Sprintf("%s %s %s %s %s %s %s %s", selectSql, q.join, q.where, q.group, q.having, q.order, q.offset, q.limit)
@@ -291,7 +294,7 @@ func (q *Query) QueryString() string {
 		q.replaceArgPlaceholders()
 
 		q.sql = q.sql + ";"
-		fmt.Println("sql result :",  q.sql)
+		fmt.Println("sql result :", q.sql)
 	}
 
 	return q.sql
@@ -313,6 +316,7 @@ func (q *Query) Offset(offset int) *Query {
 
 // Where defines a WHERE clause on SQL - Additional calls add WHERE () AND () clauses
 func (q *Query) Where(args ...interface{}) *Query {
+	fmt.Println("param :", args)
 	var paramSlice []string
 	if args != nil {
 		for _, param := range args {
@@ -326,6 +330,11 @@ func (q *Query) Where(args ...interface{}) *Query {
 	}
 	q.reset()
 	return q
+}
+
+// Where defines a WHERE clause on SQL - Additional calls add WHERE () AND () clauses
+func (q *Query) AndWhere(args ...interface{}) *Query {
+	return q.Where(args...)
 }
 
 // OrWhere defines a where clause on SQL - Additional calls add WHERE () OR () clauses
@@ -428,6 +437,7 @@ func (q *Query) Select(field ...string) *Query {
 	q.reset()
 	return q
 }
+
 // Select defines Update  sql
 func (q *Query) UpdateSql(field string) *Query {
 	q.update = field

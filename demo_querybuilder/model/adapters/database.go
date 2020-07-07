@@ -7,7 +7,6 @@ import (
 )
 
 type MysqlAdapter struct {
-	queries map[string]interface{}
 	options map[string]string
 	sqlDB   *sql.DB
 	debug   bool

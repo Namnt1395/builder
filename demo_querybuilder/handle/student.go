@@ -6,67 +6,61 @@ import (
 	"net/http"
 )
 
-func AddStudent(w http.ResponseWriter, r *http.Request) {
-	// get data input param
+func CreateStudent(w http.ResponseWriter, r *http.Request) {
 	queries := r.URL.Query()
 	code := queries.Get("code")
 	name := queries.Get("name")
 	classId := queries.Get("class_id")
-
-	params := map[string]interface{}{
-		"code":     code,
-		"name":     name,
-		"class_id": classId,
-	}
-	id, err := mysql.AddStudent(params)
-	if err != nil {
-		fmt.Println("err", err.Error())
-	}
-	if id > 0 {
-		fmt.Println("Insert thanh cong")
+	p := &mysql.StudentModel{Code: code, Name: name, ClassID: classId}
+	rs, _ := mysql.CreateStudent(p)
+	if rs > 0 {
+		fmt.Println("Them thanh cong")
 	}
 }
-func InsertObject(w http.ResponseWriter, r *http.Request) {
-	p := &mysql.StudentModel{Code: "1256", Name: "Namnt455", ClassID: "2"}
-	mysql.SaveObject(p)
-}
 
-func SelectOneStudent(w http.ResponseWriter, r *http.Request) {
-	result, err := mysql.SelectStudentId(1)
+func StudentById(w http.ResponseWriter, r *http.Request) {
+	queries := r.URL.Query()
+	idStudent := queries.Get("id")
+	result, err := mysql.StudentById(idStudent)
 	if err != nil {
 		fmt.Println("lỗi xảy ra....", err.Error())
 	}
-	fmt.Println("-----------------\n")
-	fmt.Println("HO ten :" + result.Name)
+	fmt.Println("-----------------\n", result)
+	if result != nil {
+		fmt.Println("HO ten :" + result.Name)
+	}
+
 }
-func SelectStudent(w http.ResponseWriter, r *http.Request) {
-	mysql.SelectStudent()
-	//mysql.SelectStudentWhereIn()
-	//mysql.SelectStudentWhereJoin()
+func ListStudent(w http.ResponseWriter, r *http.Request) {
+	rs, _ := mysql.ListStudent()
+	if len(rs) <= 0 {
+		fmt.Println("Khong co du lieu")
+	}
+	for _, studentInfo := range rs {
+		fmt.Println("value :", studentInfo.Name)
+	}
 }
 func UpdateStudent(w http.ResponseWriter, r *http.Request) {
 	queries := r.URL.Query()
-	idUpdate := queries.Get("id")
+	idUpdate := queries.Get("id_update")
 	code := queries.Get("code")
 	name := queries.Get("name")
 	classId := queries.Get("class_id")
-	//model := mysql.StudentModel{ID: idUpdate, ClassID: classId, Code: code, Name: name}
-	model := mysql.StudentModel{
-		ID:      idUpdate,
-		Code:    code,
-		Name:    name,
-		ClassID: classId,
-	}
-	mysql.UpdateStudent(model)
-}
-func UpdateObjectStudent(w http.ResponseWriter, r *http.Request) {
-	rs, _ := mysql.FindStudent()
-	rs = &mysql.StudentModel{
-		ID:      rs.ID,
-		Code:    rs.Code,
-		Name:    "Tuấn 123",
-		ClassID: rs.ClassID,
+	rs, _ := mysql.StudentById(idUpdate)
+	if rs != nil {
+		fmt.Println("ID...", rs.ID)
+		model := mysql.StudentModel{
+			ID:      rs.ID,
+			Code:    code,
+			Name:    name,
+			ClassID: classId,
+		}
+		rsUpdate, _ := mysql.UpdateStudent(model)
+		if rsUpdate > 0 {
+			fmt.Println("Update thanh cong")
+		}
+	} else {
+		fmt.Println("Khong tim thay thong tin can update")
 	}
 
-	mysql.UpdateObject(*rs)
 }
