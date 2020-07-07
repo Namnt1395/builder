@@ -11,13 +11,6 @@ type StudentModel struct {
 	ClassID string `json:"class_id"`
 }
 
-const (
-	StudentId = "id"
-	ClassID   = "class_id"
-	Code      = "code"
-	Name      = "name"
-)
-
 func StudentQuery() *Query {
 	return New("students", "id")
 }
