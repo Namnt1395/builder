@@ -1,14 +1,15 @@
 package mysql
 
-import (
-	"fmt"
-)
+import "fmt"
+
+var myClass *Class
 
 type StudentModel struct {
-	ID      string `json:"id"`
-	Code    string `json:"code"`
-	Name    string `json:"name"`
-	ClassID string `json:"class_id"`
+	ID           string                 `json:"id" builder:"id"`
+	Code         string                 `json:"code" builder:"code"`
+	Name         string                 `json:"name" builder:"name"`
+	ClassID      string                 `json:"class_id" builder:"class_id"`
+	Relationship map[string]interface{} `builder:"rel"`
 }
 
 func StudentQuery() *Query {
@@ -34,12 +35,11 @@ func ListStudent() ([]*StudentModel, error) {
 		return nil, err
 	}
 	for _, r := range results {
+
 		rs := StudentQuery().SetData(r, *&StudentModel{})
 		student := rs.(StudentModel)
 		models = append(models, &student)
 	}
-
-	fmt.Println("modelssss", models)
 	return models, nil
 }
 
@@ -48,14 +48,21 @@ func CreateStudent(model interface{}) (int64, error) {
 	return id, err
 }
 
-func UpdateStudent(student StudentModel) (int64, error) {
-	rs, err := StudentQuery().Where("id", "=", student.ID).UpdateObject(student)
+func StudentWithClass() ([]*StudentModel, error) {
+	var models []*StudentModel
+	q := StudentQuery().Select("id", "class_id", "code", "name", "c.class_name").InnerJoin("class c", "students.class_id=c.id")
+
+	results, err := q.Results()
 	if err != nil {
-		fmt.Println("Co loi xay ra")
-		return rs, err
+		return nil, err
 	}
-	if rs > 0 {
-		fmt.Println("Update du lieu thanh cong")
+	for _, r := range results {
+		rs := StudentQuery().SetData(r, *&StudentModel{})
+		student := rs.(StudentModel)
+		models = append(models, &student)
 	}
-	return rs, err
+	for _, v := range models {
+		fmt.Println("value...", v.Code)
+	}
+	return models, nil
 }

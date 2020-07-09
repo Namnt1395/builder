@@ -31,6 +31,9 @@ func StudentById(w http.ResponseWriter, r *http.Request) {
 	}
 
 }
+func StudentWithClass() {
+	mysql.StudentWithClass()
+}
 func ListStudent(w http.ResponseWriter, r *http.Request) {
 	rs, _ := mysql.ListStudent()
 	if len(rs) <= 0 {
@@ -39,28 +42,4 @@ func ListStudent(w http.ResponseWriter, r *http.Request) {
 	for _, studentInfo := range rs {
 		fmt.Println("value :", studentInfo.Name)
 	}
-}
-func UpdateStudent(w http.ResponseWriter, r *http.Request) {
-	queries := r.URL.Query()
-	idUpdate := queries.Get("id_update")
-	code := queries.Get("code")
-	name := queries.Get("name")
-	classId := queries.Get("class_id")
-	rs, _ := mysql.StudentById(idUpdate)
-	if rs != nil {
-		fmt.Println("ID...", rs.ID)
-		model := mysql.StudentModel{
-			ID:      rs.ID,
-			Code:    code,
-			Name:    name,
-			ClassID: classId,
-		}
-		rsUpdate, _ := mysql.UpdateStudent(model)
-		if rsUpdate > 0 {
-			fmt.Println("Update thanh cong")
-		}
-	} else {
-		fmt.Println("Khong tim thay thong tin can update")
-	}
-
 }

@@ -2,6 +2,7 @@ package mysql
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"github.com/mitchellh/mapstructure"
 	"reflect"
@@ -12,6 +13,9 @@ import (
 )
 
 var Debug bool
+
+// JoinOption is the option in JOIN.
+type JoinOption string
 
 func init() {
 	Debug = false // default to false
@@ -38,6 +42,10 @@ type Query struct {
 	offset string
 	limit  string
 
+	joinOptions []JoinOption
+	joinTables  []string
+	joinExprs   [][]string
+
 	// Extra args to be substituted in the *where* clause
 	args []interface{}
 }
@@ -55,17 +63,96 @@ func New(t string, pk string) *Query {
 
 	return q
 }
+func (q *Query) MapTagedAliasToChamber(struc interface{}, subObject interface{}) []string {
+	fmt.Println("vao day khong")
+	attributeStruct := reflect.ValueOf(struc)
+	typeAttributeStruct := attributeStruct.Type()
+	attributes := make([]string, attributeStruct.NumField(), attributeStruct.NumField())
+	for i := 0; i < attributeStruct.NumField(); i++ {
+		alias := attributeStruct.Field(i)
+		//tag := string(typeAttributeStruct.Field(i).Tag)
+		name := typeAttributeStruct.Field(i).Name
+		//	params := strings.Split(tag, ",")
+
+		alias = reflect.ValueOf(subObject)
+		fmt.Println("alias", reflect.TypeOf(subObject))
+		attributeObject := alias.Type()
+		//fmt.Println("alias", alias.NumField())
+
+		num := attributeObject.NumField()
+		//st := attributeObject.Type()
+		for i := 0; i < num; i++ {
+			item := attributeObject.Field(i)
+			fmt.Println("item", item.Tag.Get("builder"))
+			// for in data
+			fmt.Println("object...", item.Tag.Get("builder"))
+		}
+		//for i := 0; i < alias.NumField(); i++ {
+		//	//alias.Field(i).SetString(params[i])
+		//}
+		//attributeStruct.Field(i).Set(alias)
+		fmt.Printf("%d: %s %s = %v\n", i, name, alias.Type(), alias.Interface())
+	}
+
+	return attributes
+}
+
+func (q *Query) SetDataTest(data map[string]interface{}, object interface{}) interface{} {
+	fmt.Println("data...", data)
+	var inInterface map[string]interface{}
+	inrec, _ := json.Marshal(object)
+	json.Unmarshal(inrec, &inInterface)
+	fmt.Println("object...", inInterface)
+
+	for key, value := range data {
+		fmt.Println("Key:", key, "Value:", value)
+	}
+
+	//result := make(map[string]interface{})
+	//st := reflect.TypeOf(object)
+	//num := st.NumField()
+	////fmt.Println("Num value...", num)
+	//// for 1
+	//for i := 0; i < num; i++ {
+	//	item := st.Field(i)
+	//
+	//	// for in data
+	//	for v, _ := range data {
+	//		// check theo tag
+	//		if item.Tag.Get("builder") == v {
+	//			// switch
+	//			switch item.Type.Kind() {
+	//			case reflect.Int:
+	//				format := fmt.Sprintf("%d", data[v])
+	//				result[item.Name], _ = strconv.Atoi(format)
+	//			case reflect.String:
+	//				result[item.Name] = fmt.Sprintf("%v", data[v])
+	//			default:
+	//			}
+	//		} else if item.Tag.Get("builder") == "rel"{
+	//			result[item.Name] = fmt.Sprintf("%v", data[v])
+	//		}
+	//	}
+	//}
+	//
+	//inrec1, _ := json.Marshal(result)
+	//json.Unmarshal(inrec1 ,&object)
+	//
+	//fmt.Println("result...", object)
+	//mapstructure.Decode(result, &object)
+	return object
+}
 func (q *Query) SetData(data map[string]interface{}, object interface{}) interface{} {
 	result := make(map[string]interface{})
 	st := reflect.TypeOf(object)
 	num := st.NumField()
-	// for 1
+
 	for i := 0; i < num; i++ {
 		item := st.Field(i)
 		// for in data
 		for v, _ := range data {
 			// check theo tag
-			if item.Tag.Get("json") == v {
+			if item.Tag.Get("builder") == v {
 				// switch
 				switch item.Type.Kind() {
 				case reflect.Int:
@@ -104,13 +191,13 @@ func (q *Query) InsertObject(object interface{}) (int64, error) {
 	val := reflect.Indirect(reflect.ValueOf(object))
 	for i := 0; i < val.Type().NumField(); i++ {
 		// create map param
-		if val.Field(i).IsValid() {
+		if val.Type().Field(i).Tag.Get("builder") != "" {
 			// switch
 			switch val.Field(i).Type().Kind() {
 			case reflect.Int:
-				params[val.Type().Field(i).Tag.Get("json")] = val.Field(i).Int()
+				params[val.Type().Field(i).Tag.Get("builder")] = val.Field(i).Int()
 			case reflect.String:
-				params[val.Type().Field(i).Tag.Get("json")] = val.Field(i).String()
+				params[val.Type().Field(i).Tag.Get("builder")] = val.Field(i).String()
 			default:
 			}
 
@@ -118,11 +205,9 @@ func (q *Query) InsertObject(object interface{}) (int64, error) {
 	}
 	// Insert and retrieve ID in one step from db
 	sql := q.formatInsertSQL(params)
-
 	if Debug {
 		fmt.Printf("INSERT SQL:%s %v\n", sql, valuesFromParams(params))
 	}
-	fmt.Println(" sql save object...", sql)
 	id, err := Insert(sql, valuesFromParams(params)...)
 	if err != nil {
 		return 0, err
@@ -145,24 +230,6 @@ func (q *Query) formatInsertSQL(params map[string]interface{}) string {
 func (q *Query) Update(params map[string]interface{}) (int64, error) {
 	return q.UpdateAll(params)
 }
-func (q *Query) UpdateObject(object interface{}) (int64, error) {
-	var params = make(map[string]interface{})
-	val := reflect.Indirect(reflect.ValueOf(object))
-	for i := 0; i < val.Type().NumField(); i++ {
-		// create map param
-		if val.Field(i).IsValid() {
-			// switch
-			switch val.Field(i).Type().Kind() {
-			case reflect.Int:
-				params[val.Type().Field(i).Tag.Get("json")] = val.Field(i).Int()
-			case reflect.String:
-				params[val.Type().Field(i).Tag.Get("json")] = val.Field(i).String()
-			default:
-			} // end switch
-		}
-	}
-	return q.UpdateAll(params)
-}
 
 // UpdateAll updates all models specified in this relation
 func (q *Query) UpdateAll(params map[string]interface{}) (int64, error) {
@@ -177,7 +244,7 @@ func (q *Query) UpdateAll(params map[string]interface{}) (int64, error) {
 	return id, err
 }
 
-// DeleteAll delets *all* models specified in this relation
+// DeleteAll delete *all* models specified in this relation
 func (q *Query) DeleteAll() error {
 	q.Select(fmt.Sprintf("DELETE FROM %s", q.table()))
 	if Debug {
@@ -241,7 +308,7 @@ func (q *Query) FirstResult() (Result, error) {
 		return nil, err
 	}
 	if len(results) == 0 {
-		return nil, fmt.Errorf("No results found for Query:%s", q.QueryString())
+		return nil, fmt.Errorf("%s", "No results")
 	}
 	// Return the first result
 	return results[0], nil
@@ -275,7 +342,14 @@ func (q *Query) QueryString() string {
 	if q.sql == "" {
 		selectSlice := make([]string, len(q.sel))
 		for i, v := range q.sel {
-			selectSlice[i] = fmt.Sprintf("`%s`", trim(v))
+			arrSel := strings.Split(v, ".")
+			if len(arrSel) > 1 {
+				selectSlice[i] = fmt.Sprintf("%s", fmt.Sprintf("%s.`%s`", trim(arrSel[0]), trim(arrSel[1])))
+			} else {
+				// create sql format table.`id`, table.`class_id`
+				selectSlice[i] = fmt.Sprintf("%s.%s", strings.Trim(q.table(), "\\`"), fmt.Sprintf("`%s`", trim(v)))
+			}
+
 		}
 		selectSql := ""
 		if len(q.sel) <= 0 {
@@ -316,11 +390,28 @@ func (q *Query) Offset(offset int) *Query {
 
 // Where defines a WHERE clause on SQL - Additional calls add WHERE () AND () clauses
 func (q *Query) Where(args ...interface{}) *Query {
-	fmt.Println("param :", args)
 	var paramSlice []string
 	if args != nil {
-		for _, param := range args {
-			paramSlice = append(paramSlice, param.(string))
+		for i, param := range args {
+			if i == 2 {
+				switch i := param.(type) {
+				case string:
+					paramSlice = append(paramSlice, fmt.Sprintf("%s%s%s", "'", param.(string), "'"))
+				case int:
+					paramSlice = append(paramSlice, strconv.Itoa(i))
+				case float32:
+					paramSlice = append(paramSlice, fmt.Sprint(i))
+				case float64:
+					paramSlice = append(paramSlice, fmt.Sprint(i))
+				case bool:
+					paramSlice = append(paramSlice, strconv.FormatBool(i))
+				default:
+					paramSlice = append(paramSlice, param.(string))
+				}
+			} else {
+				paramSlice = append(paramSlice, param.(string))
+			}
+
 		}
 	}
 	if len(q.where) > 0 {
@@ -383,11 +474,96 @@ func (q *Query) WhereIn(col string, IDs []int64) *Query {
 	return q
 }
 
-func (q *Query) Join(otherModel string, colJoinModelTable string, colJoinOtherTable string) *Query {
-	modelTable := q.tableName
-	joinTable := fmt.Sprintf("%s", otherModel)
-	sql := fmt.Sprintf("INNER JOIN %s ON %s."+colJoinModelTable+" = %s."+colJoinOtherTable, QuoteField(joinTable), QuoteField(modelTable), QuoteField(joinTable))
+//func (q *Query) Join(otherModel string, colJoinModelTable string, colJoinOtherTable string) *Query {
+//	modelTable := q.tableName
+//	joinTable := fmt.Sprintf("%s", otherModel)
+//	sql := fmt.Sprintf("INNER JOIN %s ON %s.%s = %s.%s", QuoteField(joinTable), QuoteField(modelTable), colJoinModelTable, QuoteField(joinTable), colJoinOtherTable)
+//
+//	if len(q.join) > 0 {
+//		q.join = fmt.Sprintf("%s %s", q.join, sql)
+//	} else {
+//		q.join = fmt.Sprintf("%s", sql)
+//	}
+//	q.reset()
+//	return q
+//}
 
+func (q *Query) InnerJoin(args ...interface{}) *Query {
+	var paramSlice []string
+	var tableJoin string
+	if args != nil {
+		for i, param := range args {
+			if i == 0 {
+				tableJoin = param.(string)
+			} else {
+				paramSlice = append(paramSlice, param.(string))
+			}
+		}
+	}
+	sql := fmt.Sprintf("INNER JOIN %s ON %s", tableJoin, strings.Join(paramSlice, ""))
+	if len(q.join) > 0 {
+		q.join = fmt.Sprintf("%s %s", q.join, sql)
+	} else {
+		q.join = fmt.Sprintf("%s", sql)
+	}
+	q.reset()
+	return q
+}
+func (q *Query) LeftJoin(args ...interface{}) *Query {
+	var paramSlice []string
+	var tableJoin string
+	if args != nil {
+		for i, param := range args {
+			if i == 0 {
+				tableJoin = param.(string)
+			} else {
+				paramSlice = append(paramSlice, param.(string))
+			}
+		}
+	}
+	sql := fmt.Sprintf("LEFT JOIN %s ON %s", tableJoin, strings.Join(paramSlice, ""))
+	if len(q.join) > 0 {
+		q.join = fmt.Sprintf("%s %s", q.join, sql)
+	} else {
+		q.join = fmt.Sprintf("%s", sql)
+	}
+	q.reset()
+	return q
+}
+func (q *Query) RightJoin(args ...interface{}) *Query {
+	var paramSlice []string
+	var tableJoin string
+	if args != nil {
+		for i, param := range args {
+			if i == 0 {
+				tableJoin = param.(string)
+			} else {
+				paramSlice = append(paramSlice, param.(string))
+			}
+		}
+	}
+	sql := fmt.Sprintf("RIGHT JOIN %s ON %s", tableJoin, strings.Join(paramSlice, ""))
+	if len(q.join) > 0 {
+		q.join = fmt.Sprintf("%s %s", q.join, sql)
+	} else {
+		q.join = fmt.Sprintf("%s", sql)
+	}
+	q.reset()
+	return q
+}
+func (q *Query) FullJoin(args ...interface{}) *Query {
+	var paramSlice []string
+	var tableJoin string
+	if args != nil {
+		for i, param := range args {
+			if i == 0 {
+				tableJoin = param.(string)
+			} else {
+				paramSlice = append(paramSlice, param.(string))
+			}
+		}
+	}
+	sql := fmt.Sprintf("FULL OUTER JOIN %s ON %s", tableJoin, strings.Join(paramSlice, ""))
 	if len(q.join) > 0 {
 		q.join = fmt.Sprintf("%s %s", q.join, sql)
 	} else {

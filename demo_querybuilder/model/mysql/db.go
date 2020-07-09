@@ -8,7 +8,7 @@ import (
 var debug bool
 
 func init() {
-
+	debug = false
 }
 
 // Query SQL execute - NB caller must call use defer rows.Close() with rows returned
@@ -32,7 +32,6 @@ func QuerySql(query string, args ...interface{}) (*sql.Rows, error) {
 		return nil, err
 	}
 
-	// Caller is responsible for closing rows with defer rows.Close()
 	return rows, err
 }
 

@@ -11,9 +11,10 @@ func main() {
 
 	mysql.Connect()
 
+	handle.StudentWithClass()
+
 	http.HandleFunc("/create_student", handle.CreateStudent)
 	http.HandleFunc("/student", handle.StudentById)
-	http.HandleFunc("/update", handle.UpdateStudent)
 	http.HandleFunc("/list_student", handle.ListStudent)
 
 	err := http.ListenAndServe(":9080", nil)
